@@ -5,3 +5,10 @@ spring:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/weather}
     username: ${DB_USER:weather}
     password: ${DB_PASSWORD:changeme}
+server:
+  port: 8081
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
