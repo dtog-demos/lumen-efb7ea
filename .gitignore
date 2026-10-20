@@ -1,0 +1,24 @@
+# Build output
+target/
+
+# IDEs
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+
+# OS junk
+.DS_Store
+
+# Local config and secrets (Compose reads .env automatically)
+.env
+
+# Logs
+*.log
+
+# Working notes that must not be submitted
+progress.md
+design-proposal*.md
+*.rtf
