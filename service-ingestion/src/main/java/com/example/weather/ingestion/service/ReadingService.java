@@ -17,7 +17,7 @@ class ReadingService {
     private final ReadingRepository repository;
     private final Clock clock;
 
-    ReadingService(ReadingRepository repository, Clock clock) {
+    public ReadingService(ReadingRepository repository, Clock clock) {
         this.repository = repository;
         this.clock = clock;
     }
