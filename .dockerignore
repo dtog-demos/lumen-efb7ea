@@ -1,0 +1,12 @@
+# Ignore build output and local configuration files
+**/target
+.git
+.env
+
+# IDEs
+.idea/
+*.iml
+.vscode/
+
+# OS junk
+.DS_Store
