@@ -10,9 +10,19 @@ flowchart LR
     Q --> DB
 ```
 
-## Run
+## Prerequisites
 
-Requires Docker with Compose. `curl` and `jq` are needed for the examples and the smoke test. JDK 21 is needed only to run the tests with `./mvnw`, not to run the app (Docker builds it).
+| Needed for | Tool |
+|---|---|
+| Running the app | Docker with the Compose plugin (`docker compose version`). On Linux, your user must be able to run `docker ps` without `sudo`. |
+| The examples and the smoke test | `curl`, `jq` and bash (Git Bash or WSL on Windows) |
+| Running the tests with `./mvnw` | JDK 21 (`java -version` and `javac -version` must show 21). `JAVA_HOME` must point to it, or be unset with JDK 21 on the `PATH`. |
+
+The app itself needs no Java on the host, because Docker builds and runs it. On Debian or Ubuntu: `sudo apt install openjdk-21-jdk curl jq`.
+
+The first build needs internet access (Maven dependencies and Docker images), and the host ports 5432, 8081 and 8082 must be free.
+
+## Run
 
 ```bash
 docker compose up --build -d
