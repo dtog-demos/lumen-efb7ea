@@ -1,4 +1,4 @@
-# Weather Sensor Service
+# [POC] Weather Sensor Service
 
 REST API that receives weather readings from sensors and returns statistics (min, max, sum, avg) over a date range. Java 21, Spring Boot, PostgreSQL.
 
@@ -119,21 +119,39 @@ Invalid input returns 400 (500 for unexpected errors). Example body:
 
 ## Tests
 
-- Unit and integration: `./mvnw test` (Docker must be running for the integration tests).
-- End to end, with the services up: `./scripts/smoke-test.sh` (last line: `PASS all checks`).
+Run from the repository root. Docker must be running for the integration tests (they start a real PostgreSQL with Testcontainers).
+
+| What | Command |
+|---|---|
+| Unit and integration tests | `./mvnw test` |
+| Unit tests only | `./mvnw test -Dtest='!*IntegrationTest' -Dsurefire.failIfNoSpecifiedTests=false` |
+| Integration tests only | `./mvnw test -Dtest='*IntegrationTest' -Dsurefire.failIfNoSpecifiedTests=false` |
+| One test class | `./mvnw test -Dtest=StatsServiceTest -Dsurefire.failIfNoSpecifiedTests=false` |
+| One test method | `./mvnw test -Dtest='StatsServiceTest#noRangeDefaultsToLast24Hours' -Dsurefire.failIfNoSpecifiedTests=false` |
+| One service only | `./mvnw test -pl service-query -am` (or `-pl service-ingestion -am`) |
+| One service, unit tests only | `./mvnw test -pl service-query -am -Dtest='!*IntegrationTest' -Dsurefire.failIfNoSpecifiedTests=false` |
+| End to end, with the services up | `./scripts/smoke-test.sh` (last line: `PASS all checks`) |
+
+Integration test classes end in `IntegrationTest`, which is what separates them from the unit tests. The `failIfNoSpecifiedTests` flag is needed because the `common` module has no tests of its own.
 
 ## Assumptions
-- Linux or macOS environment (on Windows, use Git Bash or WSL)
+- any valid sensor id is accepted, and a query with no matching data returns 200 with an empty list.
+- `stat` defaults to `avg` and applies to all requested metrics.
+- "Between one day and a month" is read as 24 hours to 31 days (31 covers every calendar month). `from` is inclusive and `to` is exclusive.
 - If no date range is given, the statistic covers the last 24 hours.
 - The sensor supplies the timestamp (UTC). Metric names are free-form, with no units.
-- `stat` defaults to `avg` and applies to all requested metrics.
+- A reading with the same sensor, metric and timestamp as an existing one is ignored (first write wins).
+- Linux or macOS environment (on Windows, use Git Bash or WSL)
 
 ## Limitations and not included
-- No CI/CD setup
-- No authentication or rate limiting.
-- The services share one database.
-- Aggregates are computed on demand from raw rows (no caching).
-- No Swagger UI / generated OpenAPI docs; this README is the API documentation.
-- No Makefile or PowerShell scripts.
-- No static code analysis or linters.
-- The smoke script is a fast end-to-end check, not an exhaustive E2E suite (no failure, restart or load scenarios).
+- no authentication or rate limiting.
+- the services share one database.
+- aggregates are computed on demand from raw rows (no caching).
+- timestamps are only checked against the future (5 minutes ahead); there is no limit on how old a reading can be, and the 5-minute tolerance is fixed, not configurable.
+- minimal configuration: only the database connection can be overridden by environment variables. Ports, the database name and the validation limits (range, timestamp tolerance, field sizes) are fixed in the code or `application.yaml`.
+- no Swagger UI / generated OpenAPI docs; this README is the API documentation.
+- test coverage is not complete - the tests focus on the validation rules and the SQL; no coverage tool is configured.
+- the smoke script is a fast end-to-end check, not an exhaustive E2E suite (no failure, restart or load scenarios).
+- no static code analysis or linters.
+- no CI/CD setup
+- no Makefile or PowerShell scripts.

@@ -17,8 +17,3 @@ target/
 
 # Logs
 *.log
-
-# Working notes that must not be submitted
-progress.md
-design-proposal*.md
-*.rtf
