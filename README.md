@@ -15,12 +15,14 @@ flowchart LR
 | Needed for | Tool |
 |---|---|
 | Running the app | Docker with the Compose plugin (`docker compose version`). On Linux, your user must be able to run `docker ps` without `sudo`. |
-| The examples and the smoke test | `curl`, `jq` and bash (Git Bash or WSL on Windows) |
+| The examples and the smoke test | `curl`, `jq` and bash (WSL on Windows) |
 | Running the tests with `./mvnw` | JDK 21 (`java -version` and `javac -version` must show 21). `JAVA_HOME` must point to it, or be unset with JDK 21 on the `PATH`. |
 
 The app itself needs no Java on the host, because Docker builds and runs it. On Debian or Ubuntu: `sudo apt install openjdk-21-jdk curl jq`.
 
 The first build needs internet access (Maven dependencies and Docker images), and the host ports 5432, 8081 and 8082 must be free.
+
+On Windows, use WSL 2 and follow everything in this README inside it: clone the repository in the WSL file system, install the tools above in the WSL distribution, and for Docker either enable Docker Desktop's WSL integration or install Docker Engine in WSL.
 
 ## Run
 
@@ -37,7 +39,7 @@ __Notes:__
 
 - Stop and delete data: `docker compose down -v`
 
-- On Windows, run the commands in Git Bash or WSL (the smoke script is bash).
+- On Windows, run the commands in WSL (the smoke script is bash).
 
 ## Try it
 
@@ -151,10 +153,11 @@ Integration test classes end in `IntegrationTest`, which is what separates them 
 - If no date range is given, the statistic covers the last 24 hours.
 - The sensor supplies the timestamp (UTC). Metric names are free-form, with no units.
 - A reading with the same sensor, metric and timestamp as an existing one is ignored (first write wins).
-- Linux or macOS environment (on Windows, use Git Bash or WSL)
+- Linux or macOS environment (on Windows, use WSL 2; tested with Debian)
 
 ## Limitations and not included
 - no authentication or rate limiting.
+- least privilege is not applied: the containers run as root, and both services use the same database user, which can also run migrations.
 - the services share one database.
 - aggregates are computed on demand from raw rows (no caching).
 - timestamps are only checked against the future (5 minutes ahead); there is no limit on how old a reading can be, and the 5-minute tolerance is fixed, not configurable.
@@ -162,6 +165,7 @@ Integration test classes end in `IntegrationTest`, which is what separates them 
 - no Swagger UI / generated OpenAPI docs; this README is the API documentation.
 - test coverage is not complete - the tests focus on the validation rules and the SQL; no coverage tool is configured.
 - the smoke script is a fast end-to-end check, not an exhaustive E2E suite (no failure, restart or load scenarios).
+- docker images are not optimised (a few hundred MB each, on the full JRE image).
 - no static code analysis or linters.
 - no CI/CD setup
 - no Makefile or PowerShell scripts.
