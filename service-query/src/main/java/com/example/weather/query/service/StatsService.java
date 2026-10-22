@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Locale;
 
@@ -40,7 +41,7 @@ public class StatsService {
     }
 
 	Range resolveRange(Instant from, Instant to) {
-		Instant rangeEnd = to == null ? clock.instant() : to;
+		Instant rangeEnd = to == null ? clock.instant().truncatedTo(ChronoUnit.SECONDS) : to;
 		Instant rangeStart = from == null ? rangeEnd.minus(MIN_RANGE) : from;
 
 		if (!rangeEnd.isAfter(rangeStart)) {
