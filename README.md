@@ -124,7 +124,9 @@ The last query sends only `from`; `to` defaults to now. Add `stat=min|max|sum|av
 
 The range must be 24 h to 31 d. The response echoes the resolved `from` and `to`. No data outputs 200 with an empty `results` list.
 
-Invalid input returns 400 (500 for unexpected errors). Example body:
+`metrics` must name at least one metric: blank entries are ignored, and a list with none left returns 400.
+
+Errors use one JSON body in both services. Invalid input returns 400, and framework-level client errors keep their own status (404 unknown path, 405 wrong method, 415 wrong `Content-Type`). Only unexpected failures return 500, and only those are logged at ERROR; client errors are logged at DEBUG without a stack trace. Example body:
 ```json
 {"timestamp":"...","status":400,"error":"Bad Request","message":"...","details":[]}
 ```
@@ -152,7 +154,8 @@ Integration test classes end in `IntegrationTest`, which is what separates them 
 - "Between one day and a month" is read as 24 hours to 31 days (31 covers every calendar month). `from` is inclusive and `to` is exclusive.
 - If no date range is given, the statistic covers the last 24 hours.
 - The sensor supplies the timestamp (UTC). Metric names are free-form, with no units.
-- A reading with the same sensor, metric and timestamp as an existing one is ignored (first write wins).
+- A reading with the same sensor, metric and timestamp as an existing one is ignored (first write wins) - a sensor that retries after a timeout cannot double-count `sum` or `avg`. The trade-off is that the duplicate is silent: the API answers 201 either way, and a repeat with a *different* value is dropped without any signal.
+- A valid range with no data returns 200 with an empty `results` list. That includes a range entirely in the future, which can never match because ingestion rejects timestamps more than 5 minutes ahead.
 - Linux or macOS environment (on Windows, use WSL 2; tested with Debian)
 
 ## Limitations and not included
@@ -160,6 +163,8 @@ Integration test classes end in `IntegrationTest`, which is what separates them 
 - least privilege is not applied: the containers run as root, and both services use the same database user, which can also run migrations.
 - the services share one database.
 - aggregates are computed on demand from raw rows (no caching).
+- a query range that starts in the future returns 200 with an empty list instead of 400. It is almost always a client mistake (wrong year or time zone), so rejecting it would be preferable.
+- `metrics` is only checked for being non-empty; names are not validated against the pattern that ingestion enforces, and the list size is not capped. `sensorIds` is not validated.
 - timestamps are only checked against the future (5 minutes ahead); there is no limit on how old a reading can be, and the 5-minute tolerance is fixed, not configurable.
 - minimal configuration: only the database connection can be overridden by environment variables. Ports, the database name and the validation limits (range, timestamp tolerance, field sizes) are fixed in the code or `application.yaml`.
 - no Swagger UI / generated OpenAPI docs; this README is the API documentation.
