@@ -43,10 +43,18 @@ __Notes:__
 
 ## Try it
 
+The examples below assume an empty database (`docker compose down -v` resets it) and are meant to be run in order. Every timestamp is relative to the current time, so your output matches the outputs shown except for the dates and times.
+
 ```bash
 # Post a reading (the API answers 201 with an empty body, so nothing is printed)
 curl -X POST localhost:8081/api/v1/readings -H "Content-Type: application/json" \
   -d "{\"sensorId\":\"s1\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"metrics\":{\"temperature\":21.5,\"humidity\":60}}"
+
+# Post two older readings for sensor s1, 6 and 4 days ago (old timestamps are accepted)
+curl -X POST localhost:8081/api/v1/readings -H "Content-Type: application/json" \
+  -d "{\"sensorId\":\"s1\",\"timestamp\":\"$(date -u -d '6 days ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-6d +%Y-%m-%dT%H:%M:%SZ)\",\"metrics\":{\"temperature\":18,\"humidity\":65}}"
+curl -X POST localhost:8081/api/v1/readings -H "Content-Type: application/json" \
+  -d "{\"sensorId\":\"s1\",\"timestamp\":\"$(date -u -d '4 days ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-4d +%Y-%m-%dT%H:%M:%SZ)\",\"metrics\":{\"temperature\":22,\"humidity\":55}}"
 ```
 
 ```bash
@@ -55,12 +63,16 @@ docker compose exec db sh -c 'psql -U "$POSTGRES_USER" -d weather -c "SELECT sen
 ```
 <details>
 <summary>db output</summary>
+
 ```
  sensor_id |   metric    | value |      recorded_at       
 -----------+-------------+-------+------------------------
+ s1        | humidity    |    55 | 2026-10-18 09:12:14+00
+ s1        | temperature |    22 | 2026-10-18 09:12:14+00
+ s1        | humidity    |    65 | 2026-10-16 09:12:13+00
+ s1        | temperature |    18 | 2026-10-16 09:12:13+00
  s1        | humidity    |    60 | 2026-10-22 09:12:12+00
- s1        | temperature |  21.5 | 2026-10-22 09:12:12+00
-(2 rows)
+(5 rows)
 ```
 </details>
 <br>
@@ -99,15 +111,38 @@ curl -s "localhost:8082/api/v1/stats?sensorIds=s1&metrics=temperature,humidity&f
   "from": "2026-10-15T09:16:46Z",
   "to": "2026-10-22T09:16:46Z",
   "results": [
-    { "sensorId": "s1", "metric": "humidity", "value": 60.0, "count": 1 },
-    { "sensorId": "s1", "metric": "temperature", "value": 21.5, "count": 1 }
+    { "sensorId": "s1", "metric": "humidity", "value": 60.0, "count": 3 },
+    { "sensorId": "s1", "metric": "temperature", "value": 20.5, "count": 3 }
   ]
 }
 ```
 </details>
 <br>
 
-The last query sends only `from`; `to` defaults to now. Add `stat=min|max|sum|avg` to change the statistic, or `to=` for an explicit end (for example `2026-10-19T00:00:00Z`).
+
+```bash
+# Average temperature and humidity for sensor s1 over a 5-day window that started 7 days ago (explicit to)
+curl -s "localhost:8082/api/v1/stats?sensorIds=s1&metrics=temperature,humidity&from=$(date -u -d '7 days ago' +%Y-%m-%dT00:00:00Z 2>/dev/null || date -u -v-7d +%Y-%m-%dT00:00:00Z)&to=$(date -u -d '2 days ago' +%Y-%m-%dT00:00:00Z 2>/dev/null || date -u -v-2d +%Y-%m-%dT00:00:00Z)" | jq
+```
+<details>
+<summary>5-day range query output</summary>
+
+```json
+{
+  "stat": "avg",
+  "from": "2026-10-16T00:00:00Z",
+  "to": "2026-10-21T00:00:00Z",
+  "results": [
+    { "sensorId": "s1", "metric": "humidity", "value": 60.0, "count": 2 },
+    { "sensorId": "s1", "metric": "temperature", "value": 20.0, "count": 2 }
+  ]
+}
+```
+
+The window is relative to today, and so are the timestamps of the two older readings posted above, so both fall inside it on any day. The current reading is outside it.
+</details>
+<br>
+
 
 ## API
 
