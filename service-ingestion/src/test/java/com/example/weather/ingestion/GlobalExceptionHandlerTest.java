@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 
 import com.example.weather.common.ApiError;
 import com.example.weather.common.GlobalExceptionHandler;
@@ -33,5 +34,15 @@ class GlobalExceptionHandlerTest {
         assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getStatusCode());
         assertFalse(response.getBody().message().contains("secret"));
         assertTrue(response.getBody().details().isEmpty());
+    }
+
+    // Spring's own client errors keep their status (here 405) instead of becoming a 500
+    @Test
+    void keepsStatusOfFrameworkClientErrors() {
+        ResponseEntity<ApiError> response = new GlobalExceptionHandler()
+                .unexpected(new HttpRequestMethodNotSupportedException("GET"));
+
+        assertEquals(HttpStatus.METHOD_NOT_ALLOWED, response.getStatusCode());
+        assertEquals(405, response.getBody().status());
     }
 }

@@ -131,4 +131,26 @@ public class StatsServiceTest {
         assertEquals(expectedTo, range.to());
     }
 
+    // Empty or blank metrics are rejected before the repository is called.
+    @Test
+    void emptyOrBlankMetricsAreRejectedWithoutCallingRepository() {
+        for (List<String> metrics : List.of(List.<String>of(), List.of(""), List.of(" ", ""))) {
+            InvalidRequestException ex = assertThrows(InvalidRequestException.class,
+                () -> statsService.getStats("avg", metrics, null, null, null));
+            assertEquals("metrics must contain at least one metric name", ex.getMessage());
+        }
+        verifyNoInteractions(statsRepository);
+    }
+
+    // Blank entries are dropped and the rest are trimmed before the query.
+    @Test
+    void blankMetricEntriesAreDroppedAndTrimmed() {
+        Instant now = fixedClock.instant();
+        when(statsRepository.findStats(Stat.AVG, List.of("temperature", "humidity"), null,
+            now.minus(Duration.ofHours(24)), now)).thenReturn(List.of());
+
+        var result = statsService.getStats("avg", List.of(" temperature", "", "humidity "), null, null, null);
+
+        assertEquals(List.of(), result.results());
+    }
 }

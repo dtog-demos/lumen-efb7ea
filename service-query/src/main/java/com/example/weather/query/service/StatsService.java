@@ -36,9 +36,20 @@ public class StatsService {
 
     public StatsResponse getStats(String stat, List<String> metrics, List<String> sensorIds, Instant from, Instant to) {
         Request request = resolveRequest(stat, from, to);
-        List<StatResult> results = statsRepository.findStats(request.stat(), metrics, sensorIds, request.range().from(), request.range().to());
+        List<String> metricNames = cleanMetrics(metrics);
+        List<StatResult> results = statsRepository.findStats(request.stat(), metricNames, sensorIds, request.range().from(), request.range().to());
         return new StatsResponse(request.stat().name().toLowerCase(Locale.ROOT), request.range().from(), request.range().to(), results);
     }
+
+	// Trims names and drops blank entries; an empty list would build "metric IN ()", which is invalid SQL.
+	List<String> cleanMetrics(List<String> metrics) {
+		List<String> names = metrics == null ? List.of()
+				: metrics.stream().map(String::trim).filter(name -> !name.isEmpty()).toList();
+		if (names.isEmpty()) {
+			throw new InvalidRequestException("metrics must contain at least one metric name");
+		}
+		return names;
+	}
 
 	Range resolveRange(Instant from, Instant to) {
 		Instant rangeEnd = to == null ? clock.instant().truncatedTo(ChronoUnit.SECONDS) : to;

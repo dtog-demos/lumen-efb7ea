@@ -11,6 +11,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -121,5 +122,25 @@ class ReadingApiIntegrationTest {
                 .andExpect(jsonPath("$.message").value("timestamp is too far in the future"));
 
         assertEquals(0, countRows());
+    }
+
+    // A body that is not JSON is rejected with 415, not a 500.
+    @Test
+    void wrongContentTypeReturns415() throws Exception {
+        mockMvc.perform(post("/api/v1/readings")
+                .contentType(MediaType.TEXT_PLAIN)
+                .content("x"))
+                .andExpect(status().isUnsupportedMediaType())
+                .andExpect(jsonPath("$.status").value(415));
+
+        assertEquals(0, countRows());
+    }
+
+    // The endpoint only accepts POST; other methods return 405.
+    @Test
+    void getOnReadingsReturns405() throws Exception {
+        mockMvc.perform(get("/api/v1/readings"))
+                .andExpect(status().isMethodNotAllowed())
+                .andExpect(jsonPath("$.status").value(405));
     }
 }

@@ -12,6 +12,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.time.Duration;
@@ -189,5 +190,47 @@ class StatsApiIntegrationTest {
         mockMvc.perform(get("/api/v1/stats").param("sensorIds", "s1"))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.message").value("Missing parameter 'metrics'"));
+    }
+
+    // An empty metrics value returns 400, not a 500 from invalid SQL (IN ()).
+    @Test
+    void emptyMetricsIsRejectedWith400() throws Exception {
+        mockMvc.perform(get("/api/v1/stats").param("metrics", ""))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.message").value("metrics must contain at least one metric name"));
+    }
+
+    // Only separators and blanks in metrics is the same as no metrics.
+    @Test
+    void blankMetricsAreRejectedWith400() throws Exception {
+        mockMvc.perform(get("/api/v1/stats").param("metrics", " , "))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.message").value("metrics must contain at least one metric name"));
+    }
+
+    // Blank entries next to a real metric are ignored.
+    @Test
+    void blankMetricEntriesAreIgnored() throws Exception {
+        mockMvc.perform(get("/api/v1/stats").param("sensorIds", "s1")
+            .param("metrics", "temperature,,"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.results.length()").value(1))
+            .andExpect(jsonPath("$.results[0].metric").value("temperature"));
+    }
+
+    // An unknown path is a client error (404), not an unexpected server error.
+    @Test
+    void unknownPathReturns404() throws Exception {
+        mockMvc.perform(get("/api/v1/nope"))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.status").value(404));
+    }
+
+    // A method the endpoint does not support returns 405.
+    @Test
+    void unsupportedMethodReturns405() throws Exception {
+        mockMvc.perform(post("/api/v1/stats"))
+            .andExpect(status().isMethodNotAllowed())
+            .andExpect(jsonPath("$.status").value(405));
     }
 }
