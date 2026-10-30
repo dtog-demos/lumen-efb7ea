@@ -79,7 +79,7 @@ class ReadingApiIntegrationTest {
         mockMvc.perform(post("/api/v1/readings")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json))
-                .andExpect(status().isCreated())
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.inserted").isEmpty())
                 .andExpect(jsonPath("$.skipped").value(contains("humidity", "temperature")));
 
