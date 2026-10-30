@@ -1,5 +1,7 @@
 # [POC] Weather Sensor Service
 
+****Note:   This is a continuous LEARNING project****
+
 REST API that receives weather readings from sensors and returns statistics (min, max, sum, avg) over a date range. Java 21, Spring Boot, PostgreSQL.
 
 ```mermaid
@@ -190,7 +192,7 @@ Integration test classes end in `IntegrationTest`, which is what separates them 
 - If no date range is given, the statistic covers the last 24 hours.
 - The sensor supplies the timestamp (UTC). Metric names are free-form, with no units.
 - A reading with the same sensor, metric and timestamp as an existing one is ignored (first write wins) - a sensor that retries after a timeout cannot double-count `sum` or `avg`. The trade-off is that the duplicate is silent: the API answers 201 either way, and a repeat with a *different* value is dropped without any signal.
-- A valid range with no data returns 200 with an empty `results` list. That includes a range entirely in the future, which can never match because ingestion rejects timestamps more than 5 minutes ahead.
+- A valid range with no data returns 200 with an empty `results` list. A query whose `from` is in the future returns 400; `to` may be up to 5 minutes ahead to match the ingestion clock-skew allowance.
 - Linux or macOS environment (on Windows, use WSL 2; tested with Debian)
 
 ## Limitations and not included
@@ -198,9 +200,8 @@ Integration test classes end in `IntegrationTest`, which is what separates them 
 - least privilege is not applied: the containers run as root, and both services use the same database user, which can also run migrations.
 - the services share one database.
 - aggregates are computed on demand from raw rows (no caching).
-- a query range that starts in the future returns 200 with an empty list instead of 400. It is almost always a client mistake (wrong year or time zone), so rejecting it would be preferable.
 - `metrics` is only checked for being non-empty; names are not validated against the pattern that ingestion enforces, and the list size is not capped. `sensorIds` is not validated.
-- timestamps are only checked against the future (5 minutes ahead); there is no limit on how old a reading can be, and the 5-minute tolerance is fixed, not configurable.
+- reading timestamps and query `to` bounds may be up to 5 minutes ahead; query `from` bounds cannot be in the future. There is no limit on how old a reading can be, and the 5-minute tolerance is fixed, not configurable.
 - minimal configuration: only the database connection can be overridden by environment variables. Ports, the database name and the validation limits (range, timestamp tolerance, field sizes) are fixed in the code or `application.yaml`.
 - no Swagger UI / generated OpenAPI docs; this README is the API documentation.
 - test coverage is not complete - the tests focus on the validation rules and the SQL; no coverage tool is configured.

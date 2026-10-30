@@ -19,6 +19,7 @@ import java.util.Locale;
 public class StatsService {
 	private static final Duration MIN_RANGE = Duration.ofHours(24);
 	private static final Duration MAX_RANGE = Duration.ofDays(31);
+	private static final Duration MAX_FUTURE_SKEW = Duration.ofMinutes(5);
 
 	private final Clock clock;
     private final StatsRepository statsRepository;
@@ -30,6 +31,13 @@ public class StatsService {
 
 	public Request resolveRequest(String stat, Instant from, Instant to) {
 		Stat parsedStat = Stat.parse(stat);
+		Instant now = clock.instant();
+		if (from != null && from.isAfter(now)) {
+			throw new InvalidRequestException("from must not be in the future");
+		}
+		if (to != null && to.isAfter(now.plus(MAX_FUTURE_SKEW))) {
+			throw new InvalidRequestException("to must not be more than 5 minutes in the future");
+		}
 
 		return new Request(parsedStat, resolveRange(from, to));
 	}

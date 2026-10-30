@@ -184,6 +184,53 @@ class StatsApiIntegrationTest {
             .andExpect(jsonPath("$.message").value("Range must be between 24 hours and 31 days"));
     }
 
+    // A future from without to is rejected instead of returning an empty result.
+    @Test
+    void futureFromWithoutToIsRejectedByController() throws Exception {
+        Instant from = Instant.now().plusSeconds(1);
+
+        mockMvc.perform(get("/api/v1/stats").param("sensorIds", "s1")
+            .param("metrics", "temperature").param("from", from.toString()))
+            .andExpect(status().isBadRequest());
+    }
+
+    // An explicit valid-length range that starts in the future is rejected.
+    @Test
+    void futureRangeIsRejectedByController() throws Exception {
+        Instant now = Instant.now();
+        Instant from = now.plus(Duration.ofDays(1));
+        Instant to = now.plus(Duration.ofDays(2));
+
+        mockMvc.perform(get("/api/v1/stats").param("sensorIds", "s1")
+            .param("metrics", "temperature")
+            .param("from", from.toString()).param("to", to.toString()))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.message")
+                .value("from must not be in the future"));
+    }
+
+    // The to endpoint may be within the same five-minute clock-skew allowance as ingestion.
+    @Test
+    void toWithinFutureSkewIsAcceptedByController() throws Exception {
+        Instant to = Instant.now().plus(Duration.ofMinutes(4));
+
+        mockMvc.perform(get("/api/v1/stats").param("sensorIds", "s1")
+            .param("metrics", "temperature").param("to", to.toString()))
+            .andExpect(status().isOk());
+    }
+
+    // The to endpoint beyond the five-minute clock-skew allowance is rejected.
+    @Test
+    void toBeyondFutureSkewIsRejectedByController() throws Exception {
+        Instant to = Instant.now().plus(Duration.ofMinutes(6));
+
+        mockMvc.perform(get("/api/v1/stats").param("sensorIds", "s1")
+            .param("metrics", "temperature").param("to", to.toString()))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.message")
+                .value("to must not be more than 5 minutes in the future"));
+    }
+
     // A request without metrics returns 400.
     @Test
     void missingMetricsIsRejectedByController() throws Exception {
