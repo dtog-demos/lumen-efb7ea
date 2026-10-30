@@ -1,5 +1,7 @@
 package com.example.weather.ingestion;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -10,6 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 
 import com.example.weather.common.ApiError;
+import com.example.weather.common.ConflictException;
 import com.example.weather.common.GlobalExceptionHandler;
 import com.example.weather.common.InvalidRequestException;
 
@@ -23,6 +26,18 @@ class GlobalExceptionHandlerTest {
         assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
         assertEquals("bad input", response.getBody().message());
         assertTrue(response.getBody().details().isEmpty());
+    }
+
+    @Test
+    void mapsConflictingRequestTo409() {
+        ResponseEntity<ApiError> response = new GlobalExceptionHandler()
+                .conflict(new ConflictException(
+                        "Reading values conflict with existing readings",
+                        List.of("temperature")));
+
+        assertEquals(HttpStatus.CONFLICT, response.getStatusCode());
+        assertEquals("Reading values conflict with existing readings", response.getBody().message());
+        assertEquals(List.of("temperature"), response.getBody().details());
     }
 
     // unexpected errors map to 500 and do not leak details

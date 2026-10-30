@@ -22,15 +22,20 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(InvalidRequestException.class)
     public ResponseEntity<ApiError> invalid(InvalidRequestException ex) {
-    return build(HttpStatus.BAD_REQUEST, ex.getMessage(), List.of());
-}
+        return build(HttpStatus.BAD_REQUEST, ex.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(ConflictException.class)
+    public ResponseEntity<ApiError> conflict(ConflictException ex) {
+        return build(HttpStatus.CONFLICT, ex.getMessage(), ex.details());
+    }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiError> beanValidation(MethodArgumentNotValidException ex) {
-    List<String> details = ex.getBindingResult().getFieldErrors().stream()
+        List<String> details = ex.getBindingResult().getFieldErrors().stream()
             .map(e -> e.getField() + ": " + e.getDefaultMessage()).toList();
-    return build(HttpStatus.BAD_REQUEST, "Validation failed", details);
-}
+        return build(HttpStatus.BAD_REQUEST, "Validation failed", details);
+    }
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiError> unexpected(Exception ex) {

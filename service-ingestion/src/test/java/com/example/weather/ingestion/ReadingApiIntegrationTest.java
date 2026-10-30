@@ -1,5 +1,8 @@
 package com.example.weather.ingestion;
 
+import java.time.Duration;
+import java.time.Instant;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -10,15 +13,12 @@ import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.hamcrest.Matchers.contains;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
-import java.time.Duration;
-import java.time.Instant;
-
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -58,7 +58,10 @@ class ReadingApiIntegrationTest {
         mockMvc.perform(post("/api/v1/readings")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json))
-                .andExpect(status().isCreated());
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.inserted").isArray())
+                .andExpect(jsonPath("$.inserted.length()").value(2))
+                .andExpect(jsonPath("$.skipped").isEmpty());
 
         assertEquals(2, countRows());
     }
@@ -71,13 +74,85 @@ class ReadingApiIntegrationTest {
         mockMvc.perform(post("/api/v1/readings")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json))
-                .andExpect(status().isCreated());
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.inserted.length()").value(2));
         mockMvc.perform(post("/api/v1/readings")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json))
-                .andExpect(status().isCreated());
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.inserted").isEmpty())
+                .andExpect(jsonPath("$.skipped").value(contains("humidity", "temperature")));
 
         assertEquals(2, countRows());
+    }
+
+    @Test
+    void reportsIdenticalMetricAndInsertsNonDuplicateMetrics() throws Exception {
+        String initial = """
+                {
+                    "sensorId": "s1",
+                    "timestamp": "2026-10-20T10:00:00Z",
+                    "metrics": {"temperature": 20.5}
+                }
+                """;
+        String mixed = """
+                {
+                    "sensorId": "s1",
+                    "timestamp": "2026-10-20T10:00:00Z",
+                    "metrics": {"temperature": 20.5, "humidity": 60.0}
+                }
+                """;
+
+        mockMvc.perform(post("/api/v1/readings")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(initial))
+                .andExpect(status().isCreated());
+        mockMvc.perform(post("/api/v1/readings")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mixed))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.inserted").value(contains("humidity")))
+                .andExpect(jsonPath("$.skipped").value(contains("temperature")));
+
+        assertEquals(2, countRows());
+    }
+
+    @Test
+    void rejectsDifferentDuplicateAndRollsBackWholeBatch() throws Exception {
+        String initial = """
+                {
+                    "sensorId": "s1",
+                    "timestamp": "2026-10-20T10:00:00Z",
+                    "metrics": {"temperature": 20.5}
+                }
+                """;
+        String conflicting = """
+                {
+                    "sensorId": "s1",
+                    "timestamp": "2026-10-20T10:00:00Z",
+                    "metrics": {"humidity": 60.0, "temperature": 99.0}
+                }
+                """;
+
+        mockMvc.perform(post("/api/v1/readings")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(initial))
+                .andExpect(status().isCreated());
+        mockMvc.perform(post("/api/v1/readings")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(conflicting))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message")
+                        .value("Reading values conflict with existing readings"))
+                .andExpect(jsonPath("$.details").value(contains("temperature")));
+
+        assertEquals(1, countRows());
+        assertEquals(20.5, jdbcTemplate.queryForObject(
+                "SELECT value FROM readings WHERE sensor_id = 's1' AND metric = 'temperature'",
+                Double.class));
+        assertEquals(0, jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM readings WHERE sensor_id = 's1' AND metric = 'humidity'",
+                Integer.class));
     }
 
     // invalid body returns 400 and writes nothing

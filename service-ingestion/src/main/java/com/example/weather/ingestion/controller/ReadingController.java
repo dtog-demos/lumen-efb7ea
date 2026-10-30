@@ -1,6 +1,7 @@
 package com.example.weather.ingestion.controller;
 
 import com.example.weather.ingestion.dto.ReadingRequest;
+import com.example.weather.ingestion.dto.ReadingSaveResponse;
 import com.example.weather.ingestion.service.ReadingService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -18,5 +19,7 @@ class ReadingController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    void create(@Valid @RequestBody ReadingRequest request) { service.save(request); }
+    ReadingSaveResponse create(@Valid @RequestBody ReadingRequest request) {
+        return service.save(request);
+    }
 }

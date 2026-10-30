@@ -48,9 +48,9 @@ __Notes:__
 The examples below assume an empty database (`docker compose down -v` resets it) and are meant to be run in order. Every timestamp is relative to the current time, so your output matches the outputs shown except for the dates and times.
 
 ```bash
-# Post a reading (the API answers 201 with an empty body, so nothing is printed)
+# Post a reading (the response lists inserted and skipped metrics)
 curl -X POST localhost:8081/api/v1/readings -H "Content-Type: application/json" \
-  -d "{\"sensorId\":\"s1\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"metrics\":{\"temperature\":21.5,\"humidity\":60}}"
+  -d "{\"sensorId\":\"s1\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"metrics\":{\"temperature\":21.5,\"humidity\":60}}" | jq
 
 # Post two older readings for sensor s1, 6 and 4 days ago (old timestamps are accepted)
 curl -X POST localhost:8081/api/v1/readings -H "Content-Type: application/json" \
@@ -148,7 +148,7 @@ The window is relative to today, and so are the timestamps of the two older read
 
 ## API
 
-**POST /api/v1/readings**: `sensorId` (1-64 chars: letters, digits, `.`, `_`, `-`), `timestamp` (ISO-8601 UTC, at most 5 min in the future), `metrics` (1-50 entries; names are `snake_case`; values are numbers). A repeated sensor + metric + timestamp is ignored (first write wins) and still returns 201.
+**POST /api/v1/readings**: `sensorId` (1-64 chars: letters, digits, `.`, `_`, `-`), `timestamp` (ISO-8601 UTC, at most 5 min in the future), `metrics` (1-50 entries; names are `snake_case`; values are numbers). Returns 201 with `inserted` and `skipped` metric-name arrays, for example `{"inserted":["temperature"],"skipped":[]}`. A repeated sensor + metric + timestamp with the same value is skipped and reported in `skipped`. A different value for an existing key returns 409 with the conflicting metric names in `details`; no metrics in that request are stored.
 
 **GET /api/v1/stats**: `metrics` (required, comma-separated), `sensorIds` (optional; omitted means all), `stat` (`min|max|sum|avg`, default `avg`), `from` (inclusive) and `to` (exclusive), both optional.
 
@@ -191,7 +191,7 @@ Integration test classes end in `IntegrationTest`, which is what separates them 
 - "Between one day and a month" is read as 24 hours to 31 days (31 covers every calendar month). `from` is inclusive and `to` is exclusive.
 - If no date range is given, the statistic covers the last 24 hours.
 - The sensor supplies the timestamp (UTC). Metric names are free-form, with no units.
-- A reading with the same sensor, metric and timestamp as an existing one is ignored (first write wins) - a sensor that retries after a timeout cannot double-count `sum` or `avg`. The trade-off is that the duplicate is silent: the API answers 201 either way, and a repeat with a *different* value is dropped without any signal.
+- A reading with the same sensor, metric and timestamp as an existing one is skipped when its value matches, so a sensor retry cannot double-count `sum` or `avg`. A different value returns 409 and rolls back every metric in that request; readings are immutable through this endpoint.
 - A valid range with no data returns 200 with an empty `results` list. A query whose `from` is in the future returns 400; `to` may be up to 5 minutes ahead to match the ingestion clock-skew allowance.
 - Linux or macOS environment (on Windows, use WSL 2; tested with Debian)
 
