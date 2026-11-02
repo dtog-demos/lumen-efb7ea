@@ -34,6 +34,27 @@ function post() {
     -d "$body" "$ING/api/v1/readings"
 }
 
+function check_post() {
+  local name=$1
+  local expected_status=$2
+  local expected_body=$3
+  local request_body=$4
+  local response status body
+
+  response=$(curl -s -w $'\n%{http_code}' \
+    -H 'Content-Type: application/json' \
+    -d "$request_body" "$ING/api/v1/readings")
+  status=${response##*$'\n'}
+  body=${response%$'\n'*}
+  check "$name status" "$expected_status" "$status"
+  if jq -e "$expected_body" >/dev/null <<<"$body"; then
+    echo "PASS $name response"
+  else
+    echo "FAIL $name response: unexpected body: $body"
+    exit 1
+  fi
+}
+
 function check() {
   local name=$1
   local expected=$2
@@ -56,28 +77,42 @@ SENSOR_B="smoke-${RUN}-b"
 T2=$(ts 2)
 
 # Ingest: sensor a temperature 10, outside the default 24h range, inside 72h
-check "sensor a temperature 50h ago" 201 \
-    "$(post "{\"sensorId\":\"$SENSOR_A\",\"timestamp\":\"$(ts 50)\",\"metrics\":{\"temperature\":10}}")"
+check_post "sensor a temperature 50h ago" 201 \
+    '.inserted == ["temperature"] and .skipped == []' \
+    "{\"sensorId\":\"$SENSOR_A\",\"timestamp\":\"$(ts 50)\",\"metrics\":{\"temperature\":10}}"
 
 # Ingest: sensor a temperature 20, outside the default 24h range, inside 72h
-check "sensor a temperature 30h ago" 201 \
-    "$(post "{\"sensorId\":\"$SENSOR_A\",\"timestamp\":\"$(ts 30)\",\"metrics\":{\"temperature\":20}}")"
+check_post "sensor a temperature 30h ago" 201 \
+    '.inserted == ["temperature"] and .skipped == []' \
+    "{\"sensorId\":\"$SENSOR_A\",\"timestamp\":\"$(ts 30)\",\"metrics\":{\"temperature\":20}}"
 
 # Ingest: sensor a temperature 30, the only reading inside the default 24h range
-check "sensor a temperature 2h ago" 201 \
-    "$(post "{\"sensorId\":\"$SENSOR_A\",\"timestamp\":\"$T2\",\"metrics\":{\"temperature\":30}}")"
+check_post "sensor a temperature 2h ago" 201 \
+    '.inserted == ["temperature"] and .skipped == []' \
+    "{\"sensorId\":\"$SENSOR_A\",\"timestamp\":\"$T2\",\"metrics\":{\"temperature\":30}}"
 
 # Ingest: a second metric for sensor a, so the temperature queries must filter by metric
-check "sensor a humidity 30h ago" 201 \
-    "$(post "{\"sensorId\":\"$SENSOR_A\",\"timestamp\":\"$(ts 30)\",\"metrics\":{\"humidity\":50}}")"
+check_post "sensor a humidity 30h ago" 201 \
+    '.inserted == ["humidity"] and .skipped == []' \
+    "{\"sensorId\":\"$SENSOR_A\",\"timestamp\":\"$(ts 30)\",\"metrics\":{\"humidity\":50}}"
 
 # Ingest: a second sensor with temperature 40, for the multi-sensor query
-check "sensor b temperature 30h ago" 201 \
-    "$(post "{\"sensorId\":\"$SENSOR_B\",\"timestamp\":\"$(ts 30)\",\"metrics\":{\"temperature\":40}}")"
+check_post "sensor b temperature 30h ago" 201 \
+    '.inserted == ["temperature"] and .skipped == []' \
+    "{\"sensorId\":\"$SENSOR_B\",\"timestamp\":\"$(ts 30)\",\"metrics\":{\"temperature\":40}}"
 
-# Duplicate (same sensor, metric, timestamp) is accepted with 201 but not stored again
-check "duplicate sensor a temperature 2h ago" 201 \
-    "$(post "{\"sensorId\":\"$SENSOR_A\",\"timestamp\":\"$T2\",\"metrics\":{\"temperature\":30}}")"
+# Identical retry is idempotent and returns 200 without inserting again
+check_post "identical sensor a temperature retry" 200 \
+    '.inserted == [] and .skipped == ["temperature"]' \
+    "{\"sensorId\":\"$SENSOR_A\",\"timestamp\":\"$T2\",\"metrics\":{\"temperature\":30}}"
+
+# A changed value conflicts; the new pressure metric must roll back with it
+check_post "different duplicate value" 409 \
+    '.message == "Reading values conflict with existing readings" and .details == ["temperature"]' \
+    "{\"sensorId\":\"$SENSOR_A\",\"timestamp\":\"$T2\",\"metrics\":{\"pressure\":1013,\"temperature\":99}}"
+check "conflicting batch rolls back new metric" true \
+    "$(curl -s "$QRY/api/v1/stats?sensorIds=$SENSOR_A&metrics=pressure" |
+    jq '.results | length == 0')"
 
 # Invalid body (empty sensorId, no metrics, no timestamp) returns 400
 check "bad payload" 400 \

@@ -148,7 +148,9 @@ The window is relative to today, and so are the timestamps of the two older read
 
 ## API
 
-**POST /api/v1/readings**: `sensorId` (1-64 chars: letters, digits, `.`, `_`, `-`), `timestamp` (ISO-8601 UTC, at most 5 min in the future), `metrics` (1-50 entries; names are `snake_case`; values are numbers). Returns 201 with `inserted` and `skipped` metric-name arrays, for example `{"inserted":["temperature"],"skipped":[]}`. A repeated sensor + metric + timestamp with the same value is skipped and reported in `skipped`. A different value for an existing key returns 409 with the conflicting metric names in `details`; no metrics in that request are stored.
+**POST /api/v1/readings**: `sensorId` (1-64 chars: letters, digits, `.`, `_`, `-`), `timestamp` (ISO-8601 UTC, at most 5 min in the future), `metrics` (1-50 entries; names are `snake_case`; values are numbers). Returns `201 Created` if at least one metric is newly stored, and `200 OK` if every metric is an identical replay. Both responses include `inserted` and `skipped` metric-name arrays, for example `{"inserted":["temperature"],"skipped":[]}`. A repeated sensor + metric + timestamp with the same value is skipped and reported in `skipped`. A different value for an existing key returns `409 Conflict` with the conflicting metric names in `details`; the whole request is rolled back, so none of its metrics are stored.
+
+Readings are immutable through this endpoint. Clients should treat a 409 as a data discrepancy to reconcile, not retry the unchanged request indefinitely. Correcting a stored reading requires a future explicit correction/update API; this endpoint does not overwrite existing values.
 
 **GET /api/v1/stats**: `metrics` (required, comma-separated), `sensorIds` (optional; omitted means all), `stat` (`min|max|sum|avg`, default `avg`), `from` (inclusive) and `to` (exclusive), both optional.
 
@@ -163,7 +165,7 @@ The range must be 24 h to 31 d. The response echoes the resolved `from` and `to`
 
 `metrics` must name at least one metric: blank entries are ignored, and a list with none left returns 400.
 
-Errors use one JSON body in both services. Invalid input returns 400, and framework-level client errors keep their own status (404 unknown path, 405 wrong method, 415 wrong `Content-Type`). Only unexpected failures return 500, and only those are logged at ERROR; client errors are logged at DEBUG without a stack trace. Example body:
+Errors use one JSON body in both services. Invalid input returns 400, conflicting readings return 409, and framework-level client errors keep their own status (404 unknown path, 405 wrong method, 415 wrong `Content-Type`). Only unexpected failures return 500, and only those are logged at ERROR; client errors are logged at DEBUG without a stack trace. Example body:
 ```json
 {"timestamp":"...","status":400,"error":"Bad Request","message":"...","details":[]}
 ```
@@ -181,7 +183,7 @@ Run from the repository root. Docker must be running for the integration tests (
 | One test method | `./mvnw test -Dtest='StatsServiceTest#noRangeDefaultsToLast24Hours' -Dsurefire.failIfNoSpecifiedTests=false` |
 | One service only | `./mvnw test -pl service-query -am` (or `-pl service-ingestion -am`) |
 | One service, unit tests only | `./mvnw test -pl service-query -am -Dtest='!*IntegrationTest' -Dsurefire.failIfNoSpecifiedTests=false` |
-| End to end, with the services up | `./scripts/smoke-test.sh` (last line: `PASS all checks`) |
+| End to end, with the services up | `./scripts/smoke-test.sh` (checks 201 new inserts, 200 identical retries, 409 conflicts, batch rollback and query behavior; last line: `PASS all checks`) |
 
 Integration test classes end in `IntegrationTest`, which is what separates them from the unit tests. The `failIfNoSpecifiedTests` flag is needed because the `common` module has no tests of its own.
 
